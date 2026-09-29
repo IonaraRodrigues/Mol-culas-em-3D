@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Simulador Químico 3D - 110 Moléculas do Cotidiano</title>
+
+  <!-- Biblioteca 3Dmol.js via CDN -->
+  <script src="https://3dmol.org/build/3Dmol-min.js"></script>
+
+  <style>
+    :root {
+      --bg-primary: #121212;
+      --bg-secondary: #1e1e1e;
+      --bg-card: #2a2a2a;
+      --text-primary: #ffffff;
+      --text-secondary: #aaa;
+      --border-color: #333333;
+      --accent-color: #3b82f6;
+      --accent-hover: #2563eb;
+      --panel-overlay: rgba(20, 20, 20, 0.85);
+    }
+
+    [data-theme="light"] {
+      --bg-primary: #f4f6f8;
+      --bg-secondary: #ffffff;
+      --bg-card: #eef2f6;
+      --text-primary: #111827;
+      --text-secondary: #4b5563;
+      --border-color: #e5e7eb;
+      --accent-color: #2563eb;
+      --accent-hover: #1d4ed8;
+      --panel-overlay: rgba(255, 255, 255, 0.85);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      transition: background-color 0.2s ease, color 0.2s ease;
+    }
+
+    body {
+      background-color: var(--bg-primary);
+      color: var(--text-primary);
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* Painel Lateral */
+    .sidebar {
+      width: 340px;
+      background-color: var(--bg-secondary);
+      border-right: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+      z-index: 20;
+    }
+
+    .sidebar-header {
+      padding: 16px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .sidebar-header h2 {
+      font-size: 1.1rem;
+    }
+
+    .theme-toggle-btn {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      color: var(--text-primary);
+      padding: 6px 12px;
+      border-radius: 20px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .search-box {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .search-box input {
+      width: 100%;
+      padding: 10px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      background-color: var(--bg-card);
+      color: var(--text-primary);
+      outline: none;
+      font-size: 0.9rem;
+    }
+
+    .molecule-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .molecule-item {
+      padding: 10px 14px;
+      border-radius: 8px;
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-color);
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .molecule-item:hover, .molecule-item.active {
+      background-color: var(--accent-color);
+      color: #ffffff;
+      border-color: var(--accent-color);
+    }
+
+    .molecule-info h4 {
+      font-size: 0.95rem;
+      font-weight: 600;
+    }
+
+    .molecule-info p {
+      font-size: 0.75rem;
+      opacity: 0.8;
+    }
+
+    /* Área Principal / Visualizador */
+    .main-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+
+    .viewer-container {
+      flex: 1;
+      position: relative;
+      touch-action: none;
+    }
+
+    #mol-viewer {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Manual "Sobre a Substância" (Canto Superior Esquerdo) */
+    .info-card {
+      position: absolute;
+      top: 15px;
+      left: 15px;
+      max-width: 360px;
+      width: calc(100% - 100px);
+      background: var(--panel-overlay);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      backdrop-filter: blur(8px);
+      z-index: 15;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+      overflow: hidden;
+    }
+
+    .info-card-header {
+      padding: 12px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      background: rgba(0, 0, 0, 0.05);
+      border-bottom: 1px solid transparent;
+    }
+
+    .info-card-header.open {
+      border-bottom-color: var(--border-color);
+    }
+
+    .info-card-title {
+      font-size: 0.95rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .toggle-icon {
+      font-size: 0.8rem;
+      transition: transform 0.3s ease;
+    }
+
+    .toggle-icon.open {
+      transform: rotate(180deg);
+    }
+
+    .info-card-body {
+      padding: 14px 16px;
+      display: none;
+      max-height: 250px;
+      overflow-y: auto;
+      font-size: 0.85rem;
+      line-height: 1.4;
+    }
+
+    .info-card-body.open {
+      display: block;
+    }
+
+    .meta-tag {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      background: var(--accent-color);
+      color: #fff;
+      font-size: 0.75rem;
+      margin-bottom: 8px;
+    }
+
+    .color-legend {
+      margin-top: 12px;
+      padding-top: 10px;
+      border-top: 1px dashed var(--border-color);
+    }
+
+    .color-legend h5 {
+      font-size: 0.8rem;
+      margin-bottom: 6px;
+      color: var(--text-secondary);
+    }
+
+    .legend-items {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .legend-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.75rem;
+      background: var(--bg-card);
+      padding: 3px 8px;
+      border-radius: 12px;
+      border: 1px solid var(--border-color);
+    }
+
+    .color-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      border: 1px solid rgba(255,255,255,0.3);
+    }
+
+    /* Botão de Auto-Girar no Canto Superior Direito */
+    .top-right-controls {
+      position: absolute;
+      top: 15px;
+      right: 15px;
+      z-index: 15;
+    }
+
+    /* Controles Inferiores (Estilo e Reset) */
+    .bottom-controls-panel {
+      position: absolute;
+      bottom: 15px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 8px;
+      background: var(--panel-overlay);
+      padding: 8px 16px;
+      border-radius: 30px;
+      backdrop-filter: blur(8px);
+      border: 1px solid var(--border-color);
+      z-index: 10;
+      justify-content: center;
+    }
+
+    .btn {
+      background-color: var(--bg-card);
+      color: var(--text-primary);
+      border: 1px solid var(--border-color);
+      padding: 8px 14px;
+      border-radius: 20px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn:hover {
+      background-color: var(--accent-color);
+      color: #fff;
+    }
+
+    .btn.active {
+      background-color: var(--accent-color);
+      color: #fff;
+    }
+
+    .loading-overlay {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      color: #fff;
+      font-weight: bold;
+      font-size: 1.1rem;
+      z-index: 30;
+      display: none;
+    }
+
+    @media (max-width: 768px) {
+      body { flex-direction: column; }
+      .sidebar { width: 100%; height: 220px; }
+      .main-content { height: calc(100vh - 220px); }
+      .info-card { max-width: calc(100% - 90px); }
+    }
+  </style>
+</head>
+<body data-theme="dark">
+
+  <!-- Painel Lateral -->
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <h2>Catálogo Químico (110)</h2>
+      <button class="theme-toggle-btn" onclick="toggleTheme()">
+        <span id="theme-icon">☀️</span> <span id="theme-text">Claro</span>
+      </button>
+    </div>
+
+    <div class="search-box">
+      <input type="text" id="search-input" placeholder="Buscar molécula..." oninput="filterMolecules()">
+    </div>
+
+    <div class="molecule-list" id="molecule-list">
+      <!-- Inserido dinamicamente -->
+    </div>
+  </div>
+
+  <!-- Área do Simulador 3D -->
+  <div class="main-content">
+    <div class="loading-overlay" id="loading">Carregando estrutura 3D...</div>
+
+    <div class="viewer-container">
+      <div id="mol-viewer"></div>
+
+      <!-- Manual Abri/Fecha (Superior Esquerdo) -->
+      <div class="info-card">
+        <div class="info-card-header open" id="info-header" onclick="toggleInfoCard()">
+          <div class="info-card-title">
+            <span>📖</span> <span id="info-mol-name">Sobre a Substância</span>
+          </div>
+          <span class="toggle-icon open" id="info-toggle-icon">▲</span>
+        </div>
+        <div class="info-card-body open" id="info-body">
+          <span class="meta-tag" id="info-mol-cat">Categoria</span>
+          <p id="info-mol-desc">Selecione uma molécula para ver suas propriedades.</p>
+
+          <div class="color-legend">
+            <h5>Legenda de Cores (Padrão CPK):</h5>
+            <div class="legend-items" id="legend-items">
+              <!-- Inserido dinamicamente -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Botão Auto-Girar no Canto Superior Direito -->
+      <div class="top-right-controls">
+        <button class="btn" id="btn-spin" onclick="toggleSpin()">🔄 Auto-Girar</button>
+      </div>
+
+      <!-- Controles de Estilo e Reset na Parte Inferior -->
+      <div class="bottom-controls-panel">
+        <button class="btn" onclick="toggleStyle()">🎨 Estilo: <span id="style-name">Esferas e Varetas</span></button>
+        <button class="btn" onclick="resetCamera()">🎯 Resetar Visão</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const molecules = [
+      { name: "Água", cid: 962, cat: "Essencial", desc: "Solvente universal indispensável para a vida e reações biológicas no organismo." },
+      { name: "Dióxido de Carbono", cid: 280, cat: "Gás Respiratório", desc: "Gás expelido na respiração e utilizado por plantas na fotossíntese." },
+      { name: "Oxigênio (O2)", cid: 977, cat: "Gás Respiratório", desc: "Gás vital para a respiração celular e produção de energia biológica." },
+      { name: "Glicose", cid: 5793, cat: "Açúcar / Energia", desc: "Principal fonte de energia consumida pelo cérebro e pelas células do corpo humano." },
+      { name: "Sacarose", cid: 5988, cat: "Açúcar de Mesa", desc: "Dissacarídeo formado por glicose e frutose, extraído da cana-de-açúcar." },
+      { name: "Cafeína", cid: 2519, cat: "Estimulante", desc: "Alcalóide estimulante do sistema nervoso central encontrado no café, chá e refrigerantes." },
+      { name: "Etanol", cid: 702, cat: "Álcool Comum", desc: "Usado em combustíveis, bebidas alcoólicas e como agente desinfetante a 70%." },
+      { name: "Ácido Acetilsalicílico", cid: 2244, cat: "Aspirina", desc: "Medicamento analgésico, antitérmico e anti-inflamatório amplamente utilizado." },
+      { name: "Paracetamol", cid: 1983, cat: "Analgésico", desc: "Fármaco comum para alívio de dores leves a moderadas e controle da febre." },
+      { name: "Ibuprofeno", cid: 3672, cat: "Anti-inflamatório", desc: "Anti-inflamatório não esteroide (AINE) usado no combate a dores e inflamações." },
+      { name: "Cloreto de Sódio", cid: 5234, cat: "Sal de Cozinha", desc: "Composto iônico essencial no tempero de alimentos e no equilíbrio de fluidos corporais." },
+      { name: "Metano", cid: 297, cat: "Gás Natural", desc: "Hidrocarboneto simples, principal componente do gás natural e biogás." },
+      { name: "Propano", cid: 6334, cat: "Gás de Cozinha", desc: "Gás combustível liquefeito de petróleo (GLP) utilizado para cocção doméstica." },
+      { name: "Butano", cid: 7843, cat: "Gás de Isqueiro", desc: "Combustível usado em isqueiros e fogareiros portáteis de camping." },
+      { name: "Ácido Acético", cid: 176, cat: "Vinagre", desc: "Componente responsável pelo sabor azedo e aroma característico do vinagre." },
+      { name: "Ácido Cítrico", cid: 311, cat: "Frutas Cítricas", desc: "Acidulante natural abundante em limões e laranjas, usado em alimentos." },
+      { name: "Ácido Ascórbico", cid: 54670067, cat: "Vitamina C", desc: "Nutriente antioxidante essencial para imunidade e síntese do colágeno." },
+      { name: "Mentol", cid: 16666, cat: "Higiene / Menta", desc: "Composto orgânico que proporciona sensação de frescor em cremes dentais e doces." },
+      { name: "Vanilina", cid: 1183, cat: "Aroma de Baunilha", desc: "Substância responsável pelo aroma e sabor característico de baunilha." },
+      { name: "Capsaicina", cid: 1548943, cat: "Pimenta", desc: "Componente químico ativo das pimentas que estimula os receptores de calor." },
+      { name: "Limoneno", cid: 22311, cat: "Aroma de Limão/Laranja", desc: "Terpeno responsável pelo cheiro característico das cascas de frutas cítricas." },
+      { name: "Eucaliptol", cid: 2758, cat: "Eucalipto", desc: "Usado em descongestionantes nasais, pastilhas e produtos de higiene." },
+      { name: "Adrenalina", cid: 5816, cat: "Hormônio", desc: "Hormônio secretado em situações de estresse e emergência (luta ou fuga)." },
+      { name: "Dopamina", cid: 681, cat: "Neurotransmissor", desc: "Neurotransmissor associado às sensações de prazer, motivação e foco." },
+      { name: "Serotonina", cid: 5202, cat: "Neurotransmissor", desc: "Regulador chave do humor, bem-estar, sono e ritmo cardíaco." },
+      { name: "Melatonina", cid: 3965, cat: "Hormônio do Sono", desc: "Hormônio responsável pela regulação do ciclo circadiano e indução ao sono." },
+      { name: "Testosterona", cid: 6013, cat: "Hormônio", desc: "Principal hormônio androgenético, influenciando massa muscular e densidade óssea." },
+      { name: "Estradiol", cid: 5757, cat: "Hormônio", desc: "Principal hormônio estrogênico, fundamental no sistema reprodutor feminino." },
+      { name: "Colesterol", cid: 5997, cat: "Lipídio", desc: "Componente estrutural das membranas celulares e precursor de hormônios esteroides." },
+      { name: "Ácido Oleico", cid: 445639, cat: "Azeite de Oliva", desc: "Gordura monoinsaturada saudável abundante no azeite e no abacate." },
+      { name: "Ureia", cid: 1176, cat: "Metabolismo / Fertilizante", desc: "Subproduto do metabolismo de proteínas, usado em cremes hidratantes e adubos." },
+      { name: "Amônia", cid: 222, cat: "Produtos de Limpeza", desc: "Gás de odor forte utilizado na fabricação de fertilizantes e saneantes de limpeza." },
+      { name: "Peróxido de Hidrogênio", cid: 784, cat: "Água Oxigenada", desc: "Agente oxidante, desinfetante de ferimentos e clareador capilar." },
+      { name: "Acetona", cid: 180, cat: "Removedor de Esmalte", desc: "Solvente orgânico volátil amplamente usado para remover esmaltes e tintas." },
+      { name: "Triclosan", cid: 5564, cat: "Sabonetes Antibacterianos", desc: "Agente antisséptico e bactericida presente em sabonetes e desodorantes." },
+      { name: "Formaldeído", cid: 712, cat: "Formol", desc: "Desinfetante industrial e conservante de tecidos biológicos em laboratórios." },
+      { name: "Benzeno", cid: 241, cat: "Solvente Industrial", desc: "Hidrocarboneto aromático precursor de plásticos, resinas e borrachas sintéticas." },
+      { name: "Tolueno", cid: 1140, cat: "Solvente", desc: "Solvente orgânico presente em colas, tintas e vernizes industriais." },
+      { name: "Naftalina (Naftaleno)", cid: 931, cat: "Repelente", desc: "Composto sólido volátil utilizado tradicionalmente como repelente de traças." },
+      { name: "Nicotina", cid: 89594, cat: "Tabaco", desc: "Alcalóide estimulante altamente aditivo encontrado nas folhas do tabaco." },
+      { name: "Taurina", cid: 1123, cat: "Energéticos", desc: "Aminoácido adicionado a bebidas energéticas e que atua no sistema nervoso." },
+      { name: "Creatina", cid: 586, cat: "Suplemento", desc: "Composto que regenera o ATP muscular, muito usado em suplementação esportiva." },
+      { name: "Glutamato Monossódico", cid: 23672308, cat: "Realçador de Sabor", desc: "Aditivo alimentar que intensifica o sabor umami em alimentos processados." },
+      { name: "Sacarina", cid: 5119, cat: "Adoçante", desc: "Adoçante artificial sem calorias, centenas de vezes mais doce que a sucrose." },
+      { name: "Aspartame", cid: 134601, cat: "Adoçante", desc: "Adoçante dietético presente em refrigerantes zero e alimentos reduzidos em calorias." },
+      { name: "Sucralose", cid: 71485, cat: "Adoçante", desc: "Adoçante derivado da modificação do açúcar que não é metabolizado pelo corpo." },
+      { name: "Omeprazol", cid: 4594, cat: "Protetor Gástrico", desc: "Inibidor de bomba de prótons para tratamento de gastrite e refluxo." },
+      { name: "Dipirona", cid: 3559, cat: "Analgésico", desc: "Medicamento analgésico e antitérmico muito popular no Brasil." },
+      { name: "Loratadina", cid: 3957, cat: "Antialérgico", desc: "Anti-histamínico de segunda geração para alívio de rinite e alergias de pele." },
+      { name: "Salbutamol", cid: 2083, cat: "Broncodilatador", desc: "Fármaco usado na bombinha de asma para dilatação dos brônquios." },
+      { name: "Metformina", cid: 4091, cat: "Medicamento Diabetes", desc: "Medicamento de primeira escolha para tratamento da diabetes tipo 2." },
+      { name: "Atorvastatina", cid: 60823, cat: "Colesterol", desc: "Estatina reduzidora dos níveis corporais de colesterol LDL." },
+      { name: "Ácido Lático", cid: 612, cat: "Iogurte / Músculos", desc: "Produzido na fermentação do leite e durante o exercício muscular intenso." },
+      { name: "Ácido Málico", cid: 525, cat: "Maçã", desc: "Dá o sabor levemente azedo característico às maçãs e uvas verdes." },
+      { name: "Ácido Tartárico", cid: 875, cat: "Uvas / Vinho", desc: "Acidulante natural de uvas, essencial para o equilíbrio do sabor do vinho." },
+      { name: "Ácido Oxálico", cid: 971, cat: "Espinafre / Tomate", desc: "Encontrado em vegetais folhosos, pode formar cálculos renais se em excesso." },
+      { name: "Ácido Benzoico", cid: 243, cat: "Conservante", desc: "Conservante antimicrobiano em sucos, refrigerantes e molhos." },
+      { name: "Teobromina", cid: 5429, cat: "Chocolate", desc: "Alcalóide estimulante suave presente no cacau e no chocolate." },
+      { name: "Mentona", cid: 264, cat: "Hortelã", desc: "Componente volátil que contribui para o aroma característico da hortelã-pimenta." },
+      { name: "Eugenol", cid: 3314, cat: "Cravo-da-Índia", desc: "Composto aromático com ação analgésica local usado em tratamentos dentários." },
+      { name: "Cinamaldeído", cid: 637511, cat: "Canela", desc: "Composto que concede o sabor e cheiro característico à canela." },
+      { name: "Anetol", cid: 637563, cat: "Anis / Erva-Doce", desc: "Responsável pelo aroma adocicado do anis-estrelado e erva-doce." },
+      { name: "Cânfora", cid: 2537, cat: "Pomadas / Descongestionantes", desc: "Utilizada em pomadas para alívio muscular e descongestionantes do tórax." },
+      { name: "Timol", cid: 6989, cat: "Tomilho / Antisséptico", desc: "Agente antisséptico presente no tomilho e em enxaguantes bucais." },
+      { name: "Piperina", cid: 638024, cat: "Pimenta-do-Reino", desc: "Alcalóide que dá a picância característica à pimenta-preta." },
+      { name: "Linalol", cid: 6549, cat: "Lavanda", desc: "Monoterpeno com propriedades relaxantes presente na lavanda e manjericão." },
+      { name: "Squalano", cid: 11822, cat: "Cosméticos / Hidratante", desc: "Óleo hidratante biocompatível amplamente usado em seruns faciais." },
+      { name: "Ácido Hialurônico (Monômero)", cid: 24847761, cat: "Cosméticos / Skincare", desc: "Molécula capaz de reter grandes quantidades de água no tecido cutâneo." },
+      { name: "Glicerol (Glicerina)", cid: 753, cat: "Sabonetes / Cosméticos", desc: "Agente umectante que atrai umidade para a pele, presente em sabões." },
+      { name: "Ácido Esteárico", cid: 5281, cat: "Velas / Sabões", desc: "Ácido graxo saturado usado para dar consistência a velas e cosméticos." },
+      { name: "Ácido Laurico", cid: 3893, cat: "Óleo de Coco", desc: "Ácido graxo abundante no óleo de coco com ação antimicrobiana." },
+      { name: "Lecitina (Colina)", cid: 305, cat: "Emulsificante Alimentar", desc: "Nutriente que atua como emulsificante na maionese e chocolates." },
+      { name: "Bisfenol A (BPA)", cid: 6623, cat: "Plásticos / Resinas", desc: "Composto utilizado na produção de plásticos policarbonatos e resinas epóxi." },
+      { name: "Ftalato (DIBP)", cid: 6782, cat: "Plastificante", desc: "Aditivo usado para conferir flexibilidade e maleabilidade a plásticos PVC." },
+      { name: "Estireno", cid: 7501, cat: "Isopor", desc: "Monômero utilizado na síntese do poliestireno (isopor) e copos descartáveis." },
+      { name: "Cloreto de Vinila", cid: 6338, cat: "Tubos PVC", desc: "Gás usado para sintetizar o polímero PVC de tubulações e conexões." },
+      { name: "Tetrafluoretileno", cid: 8301, cat: "Teflon", desc: "Base para o polímero antiaderente usado em panelas e utensílios." },
+      { name: "Tereftalato de Dimetila", cid: 7421, cat: "Garrafas PET", desc: "Composto precursor utilizado na síntese de poliésteres e garrafas plásticas PET." },
+      { name: "Etilenoglicol", cid: 174, cat: "Radiador de Carro", desc: "Anticongelante e refrigerante usado nos radiadores de automóveis." },
+      { name: "Isopropanol", cid: 3776, cat: "Álcool Isopropílico", desc: "Usado para limpeza de circuitos eletrônicos por evaporar sem deixar umidade." },
+      { name: "Clorofórmio", cid: 6212, cat: "Solvente Histórico", desc: "Solvente orgânico utilizado no passado como anestésico inalatório." },
+      { name: "Éter Etílico", cid: 3283, cat: "Solvente de Laboratório", desc: "Solvente volátil com histórico de uso na medicina como anestésico geral." },
+      { name: "Ácido Formico", cid: 280, cat: "Picada de Formiga", desc: "Secretado por formigas e abelhas, responsável pela ardência das picadas." },
+      { name: "Ácido Butírico", cid: 264, cat: "Manteiga Rançosa", desc: "Concede o cheiro forte a queijos maturados e manteiga oxidada." },
+      { name: "Histamina", cid: 774, cat: "Resposta Alérgica", desc: "Mediador químico envolvido nas reações inflamatórias e reações de alergia." },
+      { name: "GABA", cid: 119, cat: "Neurotransmissor Calmante", desc: "Principal neurotransmissor inibitório do cérebro, reduzindo a ansiedade." },
+      { name: "Noradrenalina", cid: 439260, cat: "Hormônio / Foco", desc: "Regula o estado de alerta, concentração e a pressão arterial no corpo." },
+      { name: "Cortisol", cid: 5754, cat: "Hormônio do Estresse", desc: "Hormônio corticoide regulador da glicose e das respostas ao estresse." },
+      { name: "Progesterona", cid: 5994, cat: "Hormônio Feminino", desc: "Crucial no ciclo menstrual e na manutenção da gravidez." },
+      { name: "Urobilina", cid: 26868, cat: "Pigmento da Urina", desc: "Subproduto da degradação da hemoglobina que confere a cor amarela à urina." },
+      { name: "Bilirrubina", cid: 5280352, cat: "Bile / Fígado", desc: "Pigmento amarelo metabólico processado pelo fígado e expelido na bile." },
+      { name: "Vitamina A (Retinol)", cid: 445354, cat: "Visão / Imunidade", desc: "Nutriente liposolúvel vital para a saúde ocular e renovação celular." },
+      { name: "Vitamina B1 (Tiamina)", cid: 1130, cat: "Energia Metabólica", desc: "Atua na conversão de carboidratos em energia no sistema nervoso." },
+      { name: "Vitamina B3 (Niacina)", cid: 938, cat: "Metabolismo Celular", desc: "Essencial no reparo celular e no funcionamento do metabolismo energético." },
+      { name: "Vitamina B6 (Piridoxina)", cid: 1054, cat: "Síntese Aminoácidos", desc: "Coenzima essencial para a produção de neurotransmissores e hemácias." },
+      { name: "Vitamina B9 (Ácido Fólico)", cid: 135398658, cat: "Desenvolvimento Fetal", desc: "Crucial na divisão celular e formação do tubo neural em grávidas." },
+      { name: "Vitamina D3", cid: 5280795, cat: "Saúde Óssea", desc: "Sintetizada pela exposição solar, essencial para absorção de cálcio." },
+      { name: "Vitamina E (Alfa-Tocoferol)", cid: 14985, cat: "Antioxidante", desc: "Protege as membranas celulares contra os danos causados por radicais livres." },
+      { name: "Vitamina K1", cid: 5280483, cat: "Coagulação Sanguínea", desc: "Indispensável na síntese de proteínas envolvidas na cascata de coagulação." },
+      { name: "Luteína", cid: 5281243, cat: "Saúde dos Olhos", desc: "Pigmento carotenóide protetor da mácula ocular presente na couve e milho." },
+      { name: "Licopeno", cid: 5280489, cat: "Tomate / Antioxidante", desc: "Pigmento vermelho do tomate com propriedades antioxidantes comprovadas." },
+      { name: "Resveratrol", cid: 445154, cat: "Vinho Tinto", desc: "Polifenol antioxidante presente na casca das uvas vermelhas." },
+      { name: "Quercetina", cid: 5280343, cat: "Cebola / Antioxidante", desc: "Flavonoide natural com propriedades anti-inflamatórias e antialérgicas." },
+      { name: "Curcumina", cid: 5551, cat: "Açafrão / Cúrcuma", desc: "Pigmento amarelo da cúrcuma com potente ação anti-inflamatória." },
+      { name: "Glutationa", cid: 124886, cat: "Antioxidante Celular", desc: "O principal antioxidante endógeno produzido naturalmente pelo fígado." },
+      { name: "Cianeto de Hidrogênio", cid: 768, cat: "Tóxico", desc: "Gás altamente tóxico com odor de amêndoas amargas que bloqueia a respiração." },
+      { name: "Sulfeto de Hidrogênio", cid: 402, cat: "Odor de Ovo Podre", desc: "Gás com forte cheiro característico, presente em esgotos e emissões vulcânicas." },
+      { name: "Atropina", cid: 174174, cat: "Dilatador de Pupila", desc: "Medicamento anticolinérgico usado em exames oftalmológicos e emergências." },
+      { name: "Escopolamina", cid: 3000322, cat: "Anti-enjoo", desc: "Utilizada para prevenir enjoos em viagens e espasmos abdominais." },
+      { name: "Glifosato", cid: 3496, cat: "Herbicida", desc: "O herbicida agrícola mais utilizado no mundo para controle de ervas daninhas." }
+    ];
+
+    const cpkColors = {
+      "H": { name: "Hidrogênio", color: "#FFFFFF" },
+      "C": { name: "Carbono", color: "#909090" },
+      "N": { name: "Nitrogênio", color: "#3050F8" },
+      "O": { name: "Oxigênio", color: "#FF0D0D" },
+      "F": { name: "Flúor", color: "#90E050" },
+      "Cl": { name: "Cloro", color: "#1FF01F" },
+      "Br": { name: "Bromo", color: "#A62929" },
+      "I": { name: "Iodo", color: "#940094" },
+      "P": { name: "Fósforo", color: "#FF8000" },
+      "S": { name: "Enxofre", color: "#FFFF30" },
+      "Na": { name: "Sódio", color: "#AB5CF2" },
+      "Ca": { name: "Cálcio", color: "#3DFF00" },
+      "Fe": { name: "Ferro", color: "#E06633" }
+    };
+
+    let viewer = null;
+    let isSpinning = false;
+    let currentStyleIndex = 0;
+    let selectedCid = null;
+
+    const styles = [
+      { name: "Esferas e Varetas", config: { stick: { radius: 0.15 }, sphere: { scale: 0.25 } } },
+      { name: "Linhas (Estrutural)", config: { line: { linewidth: 2 } } },
+      { name: "Somente Varetas", config: { stick: { radius: 0.25 } } },
+      { name: "Esferas Espaciais (vdW)", config: { sphere: { scale: 0.75 } } }
+    ];
+
+    document.addEventListener("DOMContentLoaded", () => {
+      const element = document.getElementById("mol-viewer");
+      
+      viewer = $3Dmol.createViewer(element, {
+        backgroundColor: "black",
+        defaultcolors: $3Dmol.elementColors.element
+      });
+
+      renderMoleculeList(molecules);
+      loadMolecule(molecules[0].cid);
+    });
+
+    function renderMoleculeList(list) {
+      const container = document.getElementById("molecule-list");
+      container.innerHTML = "";
+
+      list.forEach(mol => {
+        const item = document.createElement("div");
+        item.className = `molecule-item ${mol.cid === selectedCid ? 'active' : ''}`;
+        item.onclick = () => loadMolecule(mol.cid);
+        item.innerHTML = `
+          <div class="molecule-info">
+            <h4>${mol.name}</h4>
+            <p>${mol.cat}</p>
+          </div>
+        `;
+        container.appendChild(item);
+      });
+    }
+
+    function filterMolecules() {
+      const query = document.getElementById("search-input").value.toLowerCase();
+      const filtered = molecules.filter(m => 
+        m.name.toLowerCase().includes(query) || 
+        m.cat.toLowerCase().includes(query) ||
+        m.desc.toLowerCase().includes(query)
+      );
+      renderMoleculeList(filtered);
+    }
+
+    async function loadMolecule(cid) {
+      selectedCid = cid;
+      renderMoleculeList(molecules);
+
+      const molData = molecules.find(m => m.cid === cid);
+      if (molData) {
+        document.getElementById("info-mol-name").innerText = molData.name;
+        document.getElementById("info-mol-cat").innerText = molData.cat;
+        document.getElementById("info-mol-desc").innerText = molData.desc;
+      }
+
+      document.getElementById("loading").style.display = "flex";
+
+      try {
+        const response = await fetch(`https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/${cid}/SDF?record_type=3d`);
+        if (!response.ok) throw new Error("Erro ao carregar estrutura 3D");
+        
+        const sdfData = await response.text();
+
+        viewer.clear();
+        const model = viewer.addModel(sdfData, "sdf");
+        
+        applyCurrentStyle();
+        updateColorLegend(model);
+        
+        viewer.zoomTo(800);
+        viewer.render();
+      } catch (err) {
+        alert("Não foi possível carregar a estrutura 3D desta molécula.");
+      } finally {
+        document.getElementById("loading").style.display = "none";
+      }
+    }
+
+    function updateColorLegend(model) {
+      const atoms = model.selectedAtoms({});
+      const elementsFound = new Set();
+      
+      atoms.forEach(atom => elementsFound.add(atom.elem));
+
+      const legendContainer = document.getElementById("legend-items");
+      legendContainer.innerHTML = "";
+
+      elementsFound.forEach(elem => {
+        const info = cpkColors[elem] || { name: elem, color: "#CCCCCC" };
+        const badge = document.createElement("div");
+        badge.className = "legend-badge";
+        badge.innerHTML = `
+          <div class="color-dot" style="background-color: ${info.color}"></div>
+          <span><b>${elem}</b> (${info.name})</span>
+        `;
+        legendContainer.appendChild(badge);
+      });
+    }
+
+    function toggleInfoCard() {
+      const body = document.getElementById("info-body");
+      const icon = document.getElementById("info-toggle-icon");
+      const header = document.getElementById("info-header");
+
+      body.classList.toggle("open");
+      icon.classList.toggle("open");
+      header.classList.toggle("open");
+    }
+
+    function toggleTheme() {
+      const body = document.body;
+      const isDark = body.getAttribute("data-theme") === "dark";
+      
+      const newTheme = isDark ? "light" : "dark";
+      body.setAttribute("data-theme", newTheme);
+
+      document.getElementById("theme-icon").innerText = isDark ? "🌙" : "☀️";
+      document.getElementById("theme-text").innerText = isDark ? "Escuro" : "Claro";
+
+      if (viewer) {
+        viewer.setBackgroundColor(isDark ? "white" : "black");
+        viewer.render();
+      }
+    }
+
+    function toggleSpin() {
+      isSpinning = !isSpinning;
+      const btn = document.getElementById("btn-spin");
+      if (isSpinning) {
+        viewer.spin("y", 1);
+        btn.classList.add("active");
+      } else {
+        viewer.spin(false);
+        btn.classList.remove("active");
+      }
+    }
+
+    function toggleStyle() {
+      currentStyleIndex = (currentStyleIndex + 1) % styles.length;
+      applyCurrentStyle();
+    }
+
+    function applyCurrentStyle() {
+      const style = styles[currentStyleIndex];
+      viewer.setStyle({}, style.config);
+      viewer.render();
+      document.getElementById("style-name").innerText = style.name;
+    }
+
+    function resetCamera() {
+      viewer.zoomTo(1000);
+    }
+  </script>
+</body>
+</html>
