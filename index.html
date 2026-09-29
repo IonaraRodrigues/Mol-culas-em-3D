@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Simulador Químico 3D - 110 Moléculas do Cotidiano</title>
+  <title>Simulador Químico 3D & 2D - 110 Moléculas do Cotidiano</title>
 
   <!-- Biblioteca 3Dmol.js via CDN -->
   <script src="https://3dmol.org/build/3Dmol-min.js"></script>
@@ -19,6 +19,7 @@
       --accent-color: #3b82f6;
       --accent-hover: #2563eb;
       --panel-overlay: rgba(20, 20, 20, 0.85);
+      --2d-filter: invert(1) hue-rotate(180deg);
     }
 
     [data-theme="light"] {
@@ -31,6 +32,7 @@
       --accent-color: #2563eb;
       --accent-hover: #1d4ed8;
       --panel-overlay: rgba(255, 255, 255, 0.85);
+      --2d-filter: none;
     }
 
     * {
@@ -148,11 +150,33 @@
       flex: 1;
       position: relative;
       touch-action: none;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      overflow: hidden;
     }
 
     #mol-viewer {
       width: 100%;
       height: 100%;
+    }
+
+    /* Contêiner da Imagem 2D */
+    #mol-2d-viewer {
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 100%;
+      display: none;
+      justify-content: center;
+      align-items: center;
+      background-color: var(--bg-primary);
+      z-index: 5;
+    }
+
+    #mol-2d-viewer img {
+      max-width: 80%;
+      max-height: 80%;
+      object-fit: contain;
+      filter: var(--2d-filter);
     }
 
     /* Manual "Sobre a Substância" (Canto Superior Esquerdo) */
@@ -299,7 +323,7 @@
       gap: 6px;
     }
 
-    .btn:hover {
+    .btn:hover:not(:disabled) {
       background-color: var(--accent-color);
       color: #fff;
     }
@@ -307,6 +331,11 @@
     .btn.active {
       background-color: var(--accent-color);
       color: #fff;
+    }
+
+    .btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
     }
 
     .loading-overlay {
@@ -351,12 +380,17 @@
     </div>
   </div>
 
-  <!-- Área do Simulador 3D -->
+  <!-- Área do Simulador -->
   <div class="main-content">
-    <div class="loading-overlay" id="loading">Carregando estrutura 3D...</div>
+    <div class="loading-overlay" id="loading">Carregando estrutura...</div>
 
     <div class="viewer-container">
       <div id="mol-viewer"></div>
+      
+      <!-- Contêiner 2D para Fórmula Estrutural -->
+      <div id="mol-2d-viewer">
+        <img id="img-2d" src="" alt="Fórmula Estrutural 2D">
+      </div>
 
       <!-- Manual Abri/Fecha (Superior Esquerdo) -->
       <div class="info-card">
@@ -370,7 +404,7 @@
           <span class="meta-tag" id="info-mol-cat">Categoria</span>
           <p id="info-mol-desc">Selecione uma molécula para ver suas propriedades.</p>
 
-          <div class="color-legend">
+          <div class="color-legend" id="color-legend-box">
             <h5>Legenda de Cores (Padrão CPK):</h5>
             <div class="legend-items" id="legend-items">
               <!-- Inserido dinamicamente -->
@@ -387,7 +421,7 @@
       <!-- Controles de Estilo e Reset na Parte Inferior -->
       <div class="bottom-controls-panel">
         <button class="btn" onclick="toggleStyle()">🎨 Estilo: <span id="style-name">Esferas e Varetas</span></button>
-        <button class="btn" onclick="resetCamera()">🎯 Resetar Visão</button>
+        <button class="btn" id="btn-reset" onclick="resetCamera()">🎯 Resetar Visão</button>
       </div>
     </div>
   </div>
@@ -526,12 +560,14 @@
     let isSpinning = false;
     let currentStyleIndex = 0;
     let selectedCid = null;
+    let currentModel = null;
 
     const styles = [
-      { name: "Esferas e Varetas", config: { stick: { radius: 0.15 }, sphere: { scale: 0.25 } } },
-      { name: "Linhas (Estrutural)", config: { line: { linewidth: 2 } } },
-      { name: "Somente Varetas", config: { stick: { radius: 0.25 } } },
-      { name: "Esferas Espaciais (vdW)", config: { sphere: { scale: 0.75 } } }
+      { type: '3d', name: "Esferas e Varetas", config: { stick: { radius: 0.15 }, sphere: { scale: 0.25 } } },
+      { type: '3d', name: "Linhas (Estrutural)", config: { line: { linewidth: 2 } } },
+      { type: '3d', name: "Somente Varetas", config: { stick: { radius: 0.25 } } },
+      { type: '3d', name: "Esferas Espaciais (vdW)", config: { sphere: { scale: 0.75 } } },
+      { type: '2d', name: "Fórmula Estrutural (2D)" }
     ];
 
     document.addEventListener("DOMContentLoaded", () => {
@@ -585,6 +621,9 @@
         document.getElementById("info-mol-desc").innerText = molData.desc;
       }
 
+      // Atualiza imagem 2D
+      document.getElementById("img-2d").src = `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/${cid}/PNG?image_size=large`;
+
       document.getElementById("loading").style.display = "flex";
 
       try {
@@ -594,21 +633,22 @@
         const sdfData = await response.text();
 
         viewer.clear();
-        const model = viewer.addModel(sdfData, "sdf");
+        currentModel = viewer.addModel(sdfData, "sdf");
         
         applyCurrentStyle();
-        updateColorLegend(model);
+        updateColorLegend(currentModel);
         
         viewer.zoomTo(800);
         viewer.render();
       } catch (err) {
-        alert("Não foi possível carregar a estrutura 3D desta molécula.");
+        alert("Não foi possível carregar a estrutura desta molécula.");
       } finally {
         document.getElementById("loading").style.display = "none";
       }
     }
 
     function updateColorLegend(model) {
+      if (!model) return;
       const atoms = model.selectedAtoms({});
       const elementsFound = new Set();
       
@@ -674,13 +714,37 @@
 
     function applyCurrentStyle() {
       const style = styles[currentStyleIndex];
-      viewer.setStyle({}, style.config);
-      viewer.render();
       document.getElementById("style-name").innerText = style.name;
+
+      const viewer3d = document.getElementById("mol-viewer");
+      const viewer2d = document.getElementById("mol-2d-viewer");
+      const btnSpin = document.getElementById("btn-spin");
+      const btnReset = document.getElementById("btn-reset");
+      const colorLegendBox = document.getElementById("color-legend-box");
+
+      if (style.type === '2d') {
+        viewer3d.style.display = "none";
+        viewer2d.style.display = "flex";
+        btnSpin.disabled = true;
+        btnReset.disabled = true;
+        colorLegendBox.style.display = "none";
+        if (isSpinning) toggleSpin();
+      } else {
+        viewer3d.style.display = "block";
+        viewer2d.style.display = "none";
+        btnSpin.disabled = false;
+        btnReset.disabled = false;
+        colorLegendBox.style.display = "block";
+
+        if (viewer) {
+          viewer.setStyle({}, style.config);
+          viewer.render();
+        }
+      }
     }
 
     function resetCamera() {
-      viewer.zoomTo(1000);
+      if (viewer) viewer.zoomTo(1000);
     }
   </script>
 </body>
